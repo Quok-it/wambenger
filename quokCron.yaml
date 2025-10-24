@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: quok-cron-single
+  labels:
+    app: quok
+    job-type: quok-audit-single
+spec:
+  # Be sure to tune this to your liking. Right now this runs once a day at noon
+  schedule: "0 12 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+            - name: provider
+              configMap:
+                name: provider-config
+                defaultMode: 0444
+            - name: config
+              secret:
+                secretName: config
+                defaultMode: 0444
+          containers:
+            - name: quokAuditSingle
+              image: quokit/quokAuditSingle:latest
+              imagePullPolicy: IfNotPresent
+              volumeMounts:
+                - name: provider
+                  mountPath: /config/provider.txt
+                  subPath: provider.txt
+                - name: config
+                  mountPath: /root/.config/quok/config.json
+                  subPath: config.json
+          restartPolicy: OnFailure
+
