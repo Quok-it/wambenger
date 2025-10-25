@@ -38,8 +38,12 @@ spec:
               secret:
                 secretName: config
                 defaultMode: 0444
+          # This is required to allow for NUMA region pinning
+          securityContext:
+            seccompProfile:
+              type: Unconfined
           containers:
-            - name: quokAuditSingle
+            - name: quok-audit-single
               image: quokit/quokAuditSingle:latest
               imagePullPolicy: IfNotPresent
               volumeMounts:

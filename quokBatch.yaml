@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2025 QUOK.IT & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: provider-config
+data:
+  provider.txt: |
+    quokkaTest
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: config
+type: Opaque
+stringData:
+  config.json: |
+    {
+      "api_key": "INSERT YOUR KEY HERE!"
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quok-test-job
+  labels:
+    app: quok
+    job-type: quok-audit-test
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      volumes:
+        - name: provider
+          configMap:
+            name: provider-config
+            defaultMode: 0444
+        - name: config
+          secret:
+            secretName: config
+            defaultMode: 0444
+      # This is required to allow for NUMA region pinning
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+      containers:
+        - name: quok-audit-test
+          image: quok:latest
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: provider
+              mountPath: /config/provider.txt
+              subPath: provider.txt
+            - name: config
+              mountPath: /root/.config/quok/config.json
+              subPath: config.json
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+            requests:
+              nvidia.com/gpu: 1
+      restartPolicy: Never
