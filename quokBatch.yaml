@@ -24,6 +24,24 @@ data:
     quokkaTest
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: systemctl-shim
+data:
+  systemctl: |
+    #!/bin/sh
+    set -eu
+    # Forward all systemctl invocations to the host's systemd via nsenter (no chroot required)
+    # Requires: privileged container and hostPID: true
+    if command -v nsenter >/dev/null 2>&1; then
+      BIN="/usr/bin/systemctl"
+      [ -x "$BIN" ] || BIN="/bin/systemctl"
+      exec nsenter -t 1 -m -u -i -n -p "$BIN" "$@"
+    fi
+    echo "systemctl shim: host access unavailable (need privileged and hostPID)" >&2
+    exit 1
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: config
@@ -45,6 +63,7 @@ spec:
   backoffLimit: 3
   template:
     spec:
+      hostPID: true
       volumes:
         - name: provider
           configMap:
@@ -54,14 +73,20 @@ spec:
           secret:
             secretName: config
             defaultMode: 0444
+        - name: systemctl-shim
+          configMap:
+            name: systemctl-shim
+            defaultMode: 0555
       # This is required to allow for NUMA region pinning
       securityContext:
         seccompProfile:
           type: Unconfined
       containers:
         - name: quok-audit-test
-          image: quok:latest
+          image: ghcr.io/quok-it/quok-wambenger:sha-0806dcb
           imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
           volumeMounts:
             - name: provider
               mountPath: /config/provider.txt
@@ -69,6 +94,11 @@ spec:
             - name: config
               mountPath: /root/.config/quok/config.json
               subPath: config.json
+            # this is required for systemctl checks/daemon checks
+            - name: systemctl-shim
+              mountPath: /bin/systemctl
+              subPath: systemctl
+              readOnly: true
           env:
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
